@@ -1653,6 +1653,19 @@ export function Prompt(props: PromptProps) {
   // dictation input is measured and reflowed instead of overflowing.
   const [textareaHeight, setTextareaHeight] = createSignal(1)
 
+  const dictationDebug = (label: string, data: Record<string, unknown>) => {
+    if (process.env.OPENCODE_DICTATION_DEBUG !== "1") return
+    try {
+      const { appendFileSync } = require("node:fs")
+      appendFileSync(
+        `${process.env.HOME ?? "."}/.opencode-dictation-debug.log`,
+        JSON.stringify({ ts: Date.now(), label, ...data }) + "\n",
+      )
+    } catch {
+      // Never break prompt input because debug logging failed.
+    }
+  }
+
   const promptBg = createMemo(() => theme.decrease(theme.background.raised.base))
 
   return (
@@ -1757,6 +1770,12 @@ export function Prompt(props: PromptProps) {
               cursorStyle={config.cursor}
               onContentChange={() => {
                 const value = input.plainText
+                dictationDebug("content-change", {
+                  length: value.length,
+                  virtualLineCount: input.virtualLineCount,
+                  previewHead: value.slice(0, 80),
+                  previewTail: value.slice(-80),
+                })
                 setStore("prompt", "text", value)
                 auto()?.onInput(value)
                 syncExtmarksWithPromptParts()
@@ -1773,7 +1792,17 @@ export function Prompt(props: PromptProps) {
                 }, 0), 0)
               }}
               onCursorChange={() => setCursorVersion((value) => value + 1)}
-              onKeyDown={(e: { preventDefault(): void }) => {
+              onKeyDown={(e: any) => {
+                dictationDebug("keydown", {
+                  name: e?.name,
+                  ctrl: e?.ctrl,
+                  meta: e?.meta,
+                  shift: e?.shift,
+                  sequence: String(e?.sequence ?? "").slice(0, 80),
+                  eventType: e?.eventType,
+                  source: e?.source,
+                  code: e?.code,
+                })
                 if (disabled()) {
                   e.preventDefault()
                   return
@@ -1786,6 +1815,7 @@ export function Prompt(props: PromptProps) {
                 setTimeout(() => setTimeout(() => submit(), 0), 0)
               }}
               onPaste={(event: PasteEvent) => {
+                dictationDebug("paste", { byteLength: event.bytes.byteLength })
                 if (disabled()) {
                   event.preventDefault()
                   return
@@ -1795,7 +1825,7 @@ export function Prompt(props: PromptProps) {
                 // Windows ConPTY/Terminal often sends CR-only newlines in bracketed paste
                 // Replace CRLF first, then any remaining CR
                 const normalizedText = decodePasteBytes(event.bytes).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-
+                dictationDebug("paste-normalized", { length: normalizedText.length, preview: normalizedText.slice(0, 160) })
                 // Windows Terminal <1.25 can surface image-only clipboard as an
                 // empty bracketed paste. Windows Terminal 1.25+ does not.
                 if (event.bytes.byteLength === 0) {
