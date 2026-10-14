@@ -404,6 +404,10 @@ function MessageTimelineView(
     />
   )
 
+  const turnMessages = createMemo(() =>
+    props.session.history.messages().filter((message) => projection.messageRowIndex().has(message.id)),
+  )
+
   return (
     <VirtualizedTimeline
       workspaceSession={workspaceSession}
@@ -412,11 +416,11 @@ function MessageTimelineView(
           {(id) => (
             <TurnNavigator
               sessionID={id}
-              messages={props.session.history.messages}
+              messages={turnMessages}
               complete={() => !data.session.message.more(id)}
               assistantMessagesByParent={projection.assistantMessagesByParent}
               revertMessageID={() => props.session.data.info()?.revert?.messageID}
-              activeUserMessageID={virtualized.activeUserMessageID}
+              visibleUserMessageIDs={virtualized.visibleUserMessageIDs}
               onSelect={(turn) => void props.onRevealTurn?.(turn).catch(() => undefined)}
             />
           )}
