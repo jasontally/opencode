@@ -1451,7 +1451,7 @@ export function Prompt(props: PromptProps) {
     }
 
     const lineCount = (pastedContent.match(/\n/g)?.length ?? 0) + 1
-    if ((lineCount >= 3 || pastedContent.length > 150) && config.prompt?.paste !== "full") {
+    if (lineCount >= 3 && config.prompt?.paste !== "full") {
       const extmark = input.extmarks.getAllForTypeId(promptPartTypeId).find((extmark) => {
         const ref = store.extmarkToPart.get(extmark.id)
         return (
@@ -1649,6 +1649,9 @@ export function Prompt(props: PromptProps) {
     }
   })
   const maxHeight = createMemo(() => Math.max(6, Math.floor(dimensions().height / 3)))
+  // Keep the visible prompt height in sync with wrapped lines so long, in-flight
+  // dictation input is measured and reflowed instead of overflowing.
+  const [textareaHeight, setTextareaHeight] = createSignal(1)
 
   const promptBg = createMemo(() => theme.decrease(theme.background.raised.base))
 
@@ -1747,8 +1750,10 @@ export function Prompt(props: PromptProps) {
               placeholderColor={theme.text.muted}
               textColor={muted() ? theme.text.muted : theme.text.base}
               focusedTextColor={muted() ? theme.text.muted : theme.text.base}
+              wrapMode="word"
               minHeight={1}
               maxHeight={maxHeight()}
+              height={Math.min(maxHeight(), textareaHeight())}
               cursorStyle={config.cursor}
               onContentChange={() => {
                 const value = input.plainText
@@ -1756,6 +1761,16 @@ export function Prompt(props: PromptProps) {
                 auto()?.onInput(value)
                 syncExtmarksWithPromptParts()
                 setCursorVersion((value) => value + 1)
+                setTextareaHeight(Math.max(1, input.virtualLineCount))
+                // IME/dictation input can arrive after the first content-changed
+                // notification. Re-measure and rerender on the next frames so the
+                // prompt grows and wraps while speech is being transcribed.
+                setTimeout(() => setTimeout(() => {
+                  if (!input || input.isDestroyed) return
+                  setTextareaHeight(Math.max(1, input.virtualLineCount))
+                  input.getLayoutNode().markDirty()
+                  renderer.requestRender()
+                }, 0), 0)
               }}
               onCursorChange={() => setCursorVersion((value) => value + 1)}
               onKeyDown={(e: { preventDefault(): void }) => {
